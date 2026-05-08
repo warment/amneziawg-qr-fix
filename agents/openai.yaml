@@ -1,0 +1,4 @@
+interface:
+  display_name: "Amnezia QR Fix"
+  short_description: "Decode vpn:// into valid Amnezia QR"
+  default_prompt: "Use $amneziawg-qr-fix to turn a vpn:// or .vpn file into a valid AmneziaWG .conf and QR."
