@@ -6,11 +6,15 @@
 [![Version 1.2.0](https://img.shields.io/badge/version-1.2.0-green.svg)](https://github.com/warment/amneziawg-qr-fix/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-### [Русский](https://github.com/warment/amneziawg-qr-fix) | [Discussions](https://github.com/warment/amneziawg-qr-fix/discussions)
+### [Русский](https://github.com/warment/amneziawg-qr-fix) | [English](README_EN.md)
 
 [AmneziaWG](https://docs.amnezia.org/documentation/amnezia-wg/) — обфусцированный протокол поверх WireGuard. Приложение AmneziaVPN экспортирует конфиг в QR-формате `vpn://...`, но клиент AmneziaWG такого QR не принимает — это известный баг, который Amnezia признаёт в собственной документации.
 
 **QR Fix** распаковывает `vpn://...` обратно в обычный текстовый конфиг `[Interface]` + `[Peer]` и собирает из него QR, который реально импортируется.
+
+> **Что это вообще такое?**
+> Это **отдельная консольная программа на Python** — `scripts/decode_amnezia_vpn.py`. Запускаете её в терминале, получаете `.conf` и QR. Никакого ИИ для работы не нужно.
+> Папки `SKILL.md` и `agents/openai.yaml` — это **опциональная обёртка для AI-агентов** (Claude, Codex, OpenAI и др.): они позволяют ассистенту вызвать скрипт за вас. Если вы не используете AI-агента — эти файлы можно игнорировать, они не влияют на работу программы.
 
 ### [Официальная документация Amnezia](https://docs.amnezia.org/documentation/instructions/share-connection) | [Исходники Amnezia Клиента](https://github.com/amnezia-vpn/amnezia-client)
 
@@ -46,7 +50,7 @@ python3 scripts/decode_amnezia_vpn.py export.vpn -o fixed.conf --png qr.png --mt
 - [https://github.com/amnezia-vpn/amneziawg-android/issues/56](https://github.com/amnezia-vpn/amneziawg-android/issues/56) — issue про неимпортируемый QR
 - [https://github.com/donaldzou/WGDashboard/issues/753](https://github.com/donaldzou/WGDashboard/issues/753) — issue про «unknown section in config»
 
-## Usage
+## Использование
 
 ```bash
 # QR для телефона
