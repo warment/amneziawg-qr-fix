@@ -1,74 +1,51 @@
 # AmneziaWG QR Fix
 
-### _Восстановление рабочего QR для AmneziaWG_
+_Rеконструкция рабочего QR для AmneziaWG из сломанного экспорта_
 
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Version 1.2.0](https://img.shields.io/badge/version-1.2.0-green.svg)](https://github.com/warment/amneziawg-qr-fix/releases)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+### [Русский](README.md) | [English](README_EN.md)
 
-### [Русский](https://github.com/warment/amneziawg-qr-fix) | [English](README_EN.md)
+Инструмент восстанавливает конфиг AmneziaWG из экспорта `vpn://...` / `.vpn` в обычный текстовый формат `[Interface]` + `[Peer]` и собирает из него QR, который клиент AmneziaWG реально импортирует.
 
-[AmneziaWG](https://docs.amnezia.org/documentation/amnezia-wg/) — обфусцированный протокол поверх WireGuard. Приложение AmneziaVPN экспортирует конфиг в QR-формате `vpn://...`, но клиент AmneziaWG такого QR не принимает — это известный баг, который Amnezia признаёт в собственной документации.
-
-**QR Fix** распаковывает `vpn://...` обратно в обычный текстовый конфиг `[Interface]` + `[Peer]` и собирает из него QR, который реально импортируется.
-
-> **Что это вообще такое?**
-> Это **отдельная консольная программа на Python** — `scripts/decode_amnezia_vpn.py`. Запускаете её в терминале, получаете `.conf` и QR. Никакого ИИ для работы не нужно.
-> Папки `SKILL.md` и `agents/openai.yaml` — это **опциональная обёртка для AI-агентов** (Claude, Codex, OpenAI и др.): они позволяют ассистенту вызвать скрипт за вас. Если вы не используете AI-агента — эти файлы можно игнорировать, они не влияют на работу программы.
-
-### [Официальная документация Amnezia](https://docs.amnezia.org/documentation/instructions/share-connection) | [Исходники Amnezia Клиента](https://github.com/amnezia-vpn/amnezia-client)
+> [!NOTE]
+> Это **отдельная консольная программа на Python** (`scripts/decode_amnezia_vpn.py`). Для работы не нужен никакой ИИ. Файлы `SKILL.md` и `agents/openai.yaml` — опциональная обёртка для AI-агентов (Claude, Codex, OpenAI), чтобы ассистент мог вызвать скрипт за вас. Если вы не используете AI-агента — эти файлы можно игнорировать.
 
 > [!TIP]
-> Проблема описана в официальных issue: [amneziawg-android#56](https://github.com/amnezia-vpn/amneziawg-android/issues/56), [amnezia-client#2119](https://github.com/amnezia-vpn/amnezia-client/issues/2119). Amnezia пишет: *«The QR code cannot be scanned if you selected AmneziaWG native format»*.
+> Проблема описана в официальных issue: [amneziawg-android#56](https://github.com/amnezia-vpn/amneziawg-android/issues/56), [amnezia-client#2119](https://github.com/amnezia-vpn/amnezia-client/issues/2119). Сама Amnezia признаёт: _«The QR code cannot be scanned if you selected AmneziaWG native format»_.
 
-## Features
+## Installation
 
-- Читает `.vpn` файл или сырую строку `vpn://...`.
-- Декодирует base64url → zlib-блоб → JSON и вытаскивает скрытый конфиг.
-- Проверяет, что результат это `[Interface]` + `[Peer]`.
-- Чинит нераскрытые плейсхолдеры `$PRIMARY_DNS` / `$SECONDARY_DNS` (`--dns`).
-- Вставляет/заменяет `MTU` в `[Interface]` (`--mtu 1280`) — без этого на мобильных рвётся веб-трафик.
-- Восстанавливает один битый символ base64url при неудачном декоде.
-- Генерирует QR PNG из текстового конфига, а не из `vpn://`.
-- Флаг `--raw` — вернуть конфиг без модификаций.
+Требуется Python 3.10+. Для генерации PNG установите `qrcode[pil]`:
 
-## Quick start
+```
+$ pip install "qrcode[pil]"
+```
 
-```bash
-pip install "qrcode[pil]"
-python3 scripts/decode_amnezia_vpn.py export.vpn -o fixed.conf --png qr.png --mtu 1280
+## Usage
+
+Быстрый запуск — QR для телефона:
+
+```
+$ python3 scripts/decode_amnezia_vpn.py export.vpn -o fixed.conf --png qr.png --mtu 1280
 ```
 
 После этого:
 
-- `fixed.conf` — рабочая конфигурация для AmneziaWG / WireGuard.
+- `fixed.conf` — рабочая конфигурация для AmneziaWG / WireGuard;
 - `qr.png` — QR, который клиент AmneziaWG импортирует.
 
-## Links
+## How it works
 
-- [https://docs.amnezia.org](https://docs.amnezia.org) — документация Amnezia
-- [https://github.com/amnezia-vpn/amneziawg-android/issues/56](https://github.com/amnezia-vpn/amneziawg-android/issues/56) — issue про неимпортируемый QR
-- [https://github.com/donaldzou/WGDashboard/issues/753](https://github.com/donaldzou/WGDashboard/issues/753) — issue про «unknown section in config»
+1. Читает `.vpn` файл или сырую строку `vpn://...`.
+2. Снимает `vpn://`, декодирует base64url, разжимает zlib-блоб (с 4-байтным заголовком или без).
+3. Находит скрытый конфиг и проверяет, что это `[Interface]` + `[Peer]`.
+4. При неудачном декоде пробует восстановить один битый символ base64url.
+5. Чинит нераскрытые плейсхолдеры `$PRIMARY_DNS` / `$SECONDARY_DNS` (по умолчанию `1.1.1.1, 8.8.8.8`, переопределение через `--dns`).
+6. Вставляет/заменяет `MTU` в `[Interface]` (`--mtu 1280`) — без него на мобильных сетях рвётся веб-трафик.
+7. Сохраняет `.conf` и, при необходимости, генерирует QR PNG из текста, а не из `vpn://`.
 
-## Использование
+## Options
 
-```bash
-# QR для телефона
-python3 scripts/decode_amnezia_vpn.py export.vpn -o fixed.conf --png qr.png --mtu 1280
-
-# Подставить свои DNS вместо $PRIMARY_DNS/$SECONDARY_DNS
-python3 scripts/decode_amnezia_vpn.py export.vpn -o fixed.conf --dns "9.9.9.9, 149.112.112.112"
-
-# Вернуть как есть, без модификаций
-python3 scripts/decode_amnezia_vpn.py export.vpn --raw
-
-# Восстановить один битый символ base64url
-python3 scripts/decode_amnezia_vpn.py export.vpn -o fixed.conf
-```
-
-### Ключи
-
-| Ключ | Назначение |
+| Флаг | Назначение |
 |------|-----------|
 | `source` | путь к `.vpn` или строка `vpn://...` |
 | `-o, --output-conf` | куда писать `.conf` (иначе stdout) |
@@ -76,20 +53,24 @@ python3 scripts/decode_amnezia_vpn.py export.vpn -o fixed.conf
 | `--dns "a, b"` | заменить `$PRIMARY_DNS/$SECONDARY_DNS` (дефолт `1.1.1.1, 8.8.8.8`) |
 | `--mtu 1280` | вставить/заменить `MTU` в `[Interface]` |
 | `--no-repair` | не чинить битый символ base64url |
-| `--raw` | не чинить плейсхолдеры и MTU |
+| `--raw` | не чинить плейсхолдеры и MTU, вернуть как есть |
 
-## Tech
+> [!TIP]
+> Для импорта предпочтительнее скопировать `fixed.conf` в клиент AmneziaWG (**Import from file**). Скан `qr.png` — альтернатива.
 
-QR Fix использует стандартную библиотеку Python и один опциональный пакет:
+> [!IMPORTANT]
+> Конфиги с нераскрытыми `$UPPERCASE_VARS` отклоняются, если не чинить. QR собирается только из валидного текста с `[Interface]` и `[Peer]` — никогда из `vpn://` или JSON.
 
-- Python 3.10+
-- [qrcode[pil]](https://pypi.org/project/qrcode/) — генерация PNG
+## Examples
 
-## Как импортировать
+```
+# Подставить свои DNS
+$ python3 scripts/decode_amnezia_vpn.py export.vpn -o fixed.conf --dns "9.9.9.9, 149.112.112.112"
 
-- Предпочтительно: скопировать `fixed.conf` в клиент AmneziaWG (**Import from file**).
-- Альтернативно: отсканировать `qr.png`.
+# Вернуть конфиг без модификаций
+$ python3 scripts/decode_amnezia_vpn.py export.vpn --raw
+```
 
 ## License
 
-This project is licensed under the MIT License (see LICENSE).
+Распространяется под лицензией MIT (см. [LICENSE](LICENSE)).
