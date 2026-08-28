@@ -4,12 +4,16 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import sys
 import zlib
 from pathlib import Path
 
 
 BASE64URL_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+
+# Значения по умолчанию для нераскрытых переменных Amnezia-клиента
+DEFAULT_DNS = ["1.1.1.1", "8.8.8.8"]
 
 
 def read_source(value: str) -> str:
@@ -125,6 +129,73 @@ def maybe_write_qr_png(config_text: str, png_path: str):
     img.save(png_path)
 
 
+def fix_placeholders(config_text: str, dns_values: list[str]) -> tuple[str, list[str]]:
+    """Заменяет нераскрытые переменные вида $PRIMARY_DNS на реальные значения.
+
+    Amnezia-клиент при экспорте иногда оставляет литералы $PRIMARY_DNS /
+    $SECONDARY_DNS вместо адресов — такой конфиг не работает.
+    Возвращает (новый_текст, список_заменённых_переменных).
+    """
+    found = sorted(set(re.findall(r"\$[A-Z_][A-Z0-9_]*", config_text)))
+    if not found:
+        return config_text, []
+
+    fixed = config_text
+    # DNS-переменные подставляем из --dns (или дефолтов)
+    mapping = {}
+    if "$PRIMARY_DNS" in found and dns_values:
+        mapping["$PRIMARY_DNS"] = dns_values[0]
+    if "$SECONDARY_DNS" in found:
+        mapping["$SECONDARY_DNS"] = dns_values[1] if len(dns_values) > 1 else dns_values[0]
+
+    for var, value in mapping.items():
+        fixed = fixed.replace(var, value)
+
+    remaining = sorted(set(re.findall(r"\$[A-Z_][A-Z0-9_]*", fixed)))
+    return fixed, remaining
+
+
+def apply_mtu(config_text: str, mtu: int) -> tuple[str, str]:
+    """Вставляет или заменяет строку MTU в секции [Interface].
+
+    Возвращает (новый_текст, что_сделано): "inserted" | "replaced" | "unchanged".
+    Без MTU мобильные сети часто рвут крупные пакеты: handshake проходит,
+    а веб-трафик умирает. Безопасное значение — 1280.
+    """
+    mtu_line = f"MTU = {mtu}"
+    lines = config_text.splitlines()
+    out: list[str] = []
+    action = "inserted"
+    inserted = False
+    in_interface = False
+
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith("["):
+            in_interface = stripped == "[Interface]"
+        if stripped.upper().startswith("MTU"):
+            if not inserted:
+                out.append(mtu_line)
+                inserted = True
+                action = "replaced"
+            continue  # лишние MTU-строки выбрасываем
+        if (
+            not inserted
+            and in_interface
+            and stripped.lower().startswith("address")
+        ):
+            out.append(line)
+            out.append(mtu_line)
+            inserted = True
+            continue
+        out.append(line)
+
+    if not inserted:
+        # [Interface] не нашёлся — добавляем в самое начало
+        out.insert(0, mtu_line)
+    return "\n".join(out) + "\n", action
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Decode Amnezia vpn:// exports into plain config and optional QR."
@@ -136,6 +207,22 @@ def main() -> int:
         "--no-repair",
         action="store_true",
         help="Do not try one-character base64url repair if direct decode fails",
+    )
+    parser.add_argument(
+        "--dns",
+        default=", ".join(DEFAULT_DNS),
+        help="DNS через запятую для подстановки вместо $PRIMARY_DNS/$SECONDARY_DNS",
+    )
+    parser.add_argument(
+        "--mtu",
+        type=int,
+        default=None,
+        help="Вставить/заменить MTU (рекомендуется 1280 для мобильных сетей)",
+    )
+    parser.add_argument(
+        "--raw",
+        action="store_true",
+        help="Не чинить плейсхолдеры и не трогать MTU — вернуть как есть",
     )
     args = parser.parse_args()
 
@@ -156,6 +243,19 @@ def main() -> int:
             f"repaired base64url character at position {index}: {original!r} -> {replacement!r}",
             file=sys.stderr,
         )
+
+    # Постобработка: чиним плейсхолдеры и MTU (если не попросили --raw)
+    if not args.raw:
+        dns_values = [d.strip() for d in args.dns.split(",") if d.strip()]
+        config, remaining = fix_placeholders(config, dns_values)
+        if remaining:
+            print(
+                f"ВНИМАНИЕ: остались нераскрытые переменные: {', '.join(remaining)}",
+                file=sys.stderr,
+            )
+        if args.mtu:
+            config, mtu_action = apply_mtu(config, args.mtu)
+            print(f"MTU {args.mtu}: {mtu_action}", file=sys.stderr)
 
     if args.output_conf:
         Path(args.output_conf).write_text(config + "\n", encoding="utf-8")
